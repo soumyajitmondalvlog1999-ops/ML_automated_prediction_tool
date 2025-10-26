@@ -210,27 +210,40 @@ if uploaded_file is not None:
     
     is_excel = uploaded_file.name.endswith(('.xls', '.xlsx'))
     
-    # --- THIS SECTION IS NOW VISIBLE FOR ALL FILE TYPES ---
-    has_header = st.checkbox(
-        "My file has a header in the first row", 
-        value=True,
-        help="Check this if the first row of your file contains column names. Uncheck it if the first row is data."
+    # --- UPDATED HEADER OPTIONS (VISIBLE FOR ALL FILES) ---
+    no_header = st.checkbox(
+        "My file does NOT have a header row", 
+        value=False,
+        help="Check this if your file *only* contains data and no column names. The app will use numbers (0, 1, 2...) as names."
     )
-    header_arg = 0 if has_header else None
-    # --- END MOVED SECTION ---
+    
+    if no_header:
+        header_arg = None
+    else:
+        # If the file DOES have a header, let the user specify which row
+        header_arg = st.number_input(
+            "Header Row Number", 
+            min_value=0, 
+            value=0, 
+            step=1,
+            help="Which row contains the column names? (Remember: 0 is the first row)"
+        )
+        # --- THIS IS THE NEW, VISIBLE INSTRUCTION YOU ASKED FOR ---
+        st.caption("E.g., enter **0** if the header is on the **first row**, or **2** if it's on the **third row**.")
+    # --- END NEW HEADER OPTIONS ---
 
     if is_excel:
         try:
             # We now pass the 'header_arg' to pd.read_excel
             df = pd.read_excel(uploaded_file, header=header_arg)
         except Exception as e:
-            st.error(f"Error loading Excel file: {e}")
+            st.error(f"Error loading Excel file: {e}. Check your header row number.")
     else:
         # It's a text file (CSV, TXT, etc.)
         st.info("""
             **Please specify how to load your text file:**
-            * **Delimiter:** What character separates your columns? (e.g., `,` for CSV, `\\t` for tab).
-            * **Header:** Use the checkbox above to indicate if your file has a header.
+            * **Header:** Use the options above to specify your header row.
+            * **Delimiter:** What character separates your columns?
             """)
         
         separator = st.text_input(
@@ -279,7 +292,7 @@ if uploaded_file is not None:
 
         # --- 5. Run Button ---
         st.header("3. Build Your Model")
-        if st.button("**Build Model**", type="primary"):
+        if st.button("**Build Your Model**", type="primary"):
             if target_column is None:
                 st.error("Please select a target variable to predict.")
             else:
