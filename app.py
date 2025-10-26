@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np  # <-- IMPORT NUMPY
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -29,14 +29,14 @@ st.write("Upload your data, select what you want to predict, and this app will a
 def build_model(df, target_column, problem_type, ignore_cols):
     """Builds and evaluates a model based on user inputs."""
     
-    st.write("### 1. Preparing Data")
+    st.subheader("📊 1. Preparing Data")
     
     # --- 1. Define Features (X) and Target (y) ---
     try:
         y = df[target_column]
         X = df.drop(columns=[target_column] + ignore_cols)
     except Exception as e:
-        st.error(f"Error preparing data: {e}")
+        st.error(f"Error preparing data: {e}", icon="🚨")
         return
 
     # --- 2. Sanity Checks & Target Variable Processing ---
@@ -54,7 +54,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
             * Your data looks like a **Regression** problem (predicting a number).
             
             **Please select a different target column or change the "Problem Type" to "Regression".**
-            """)
+            """, icon="🚨")
             return
         if unique_classes < 2:
             st.error(f"""
@@ -62,7 +62,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
             
             Your target column ('{target_column}') only has **{unique_classes}** unique value.
             The model needs at least two different classes to learn from (e.g., 'True' and 'False').
-            """)
+            """, icon="🚨")
             return
             
         # If all checks pass, encode y for classification
@@ -75,7 +75,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
             y = pd.to_numeric(y)
             
             if y.isna().any():
-                st.warning(f"Your target column ('{target_column}') has missing values. Rows with missing targets will be dropped before training.")
+                st.warning(f"Your target column ('{target_column}') has missing values. Rows with missing targets will be dropped before training.", icon="⚠️")
                 X = X[~y.isna()]
                 y = y.dropna()
                 
@@ -88,11 +88,11 @@ def build_model(df, target_column, problem_type, ignore_cols):
             
             * Regression can only predict numbers.
             * If you are trying to predict a category, please change the "Problem Type" to "Classification".
-            """)
+            """, icon="🚨")
             return
 
     # --- 3. Automatic Feature Detection & Cleaning (for X) ---
-    st.write("### 2. Detecting Feature Types")
+    st.subheader("🧬 2. Detecting Feature Types")
     
     numeric_features = []
     categorical_features = []
@@ -105,8 +105,8 @@ def build_model(df, target_column, problem_type, ignore_cols):
             categorical_features.append(col)
             X[col] = X[col].astype(str) # Force to string to handle mixed types
 
-    st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}")
-    st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}")
+    st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}", icon="🔢")
+    st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}", icon="🔤")
 
     # --- 5. Create Preprocessing Pipelines ---
     numeric_transformer = Pipeline(steps=[
@@ -139,7 +139,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
     ])
 
     # --- 9. Split data and train model ---
-    st.write("### 3. Training Model")
+    st.subheader("🛠️ 3. Training Model")
     with st.spinner("Splitting data and training model... This may take a moment."):
         
         try:
@@ -152,7 +152,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
             **Stratification Warning:** Could not stratify data (Error: {e}). 
             This usually happens if one class has very few samples.
             Proceeding without stratification.
-            """)
+            """, icon="⚠️")
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
             )
@@ -160,10 +160,10 @@ def build_model(df, target_column, problem_type, ignore_cols):
         model_pipeline.fit(X_train, y_train)
         y_pred = model_pipeline.predict(X_test)
         
-    st.success("Model training complete! ✅")
+    st.success("Model training complete!", icon="✅")
 
     # --- 10. Evaluate Model and Show Results ---
-    st.write("### 4. Model Evaluation")
+    st.subheader("📈 4. Model Evaluation")
     if problem_type == "Classification":
         accuracy = accuracy_score(y_test, y_pred)
         st.metric(label="**Accuracy**", value=f"{accuracy * 100:.2f}%")
@@ -171,20 +171,18 @@ def build_model(df, target_column, problem_type, ignore_cols):
         try:
             st.code(classification_report(y_test, y_pred, target_names=y_categories.astype(str), zero_division=0))
         except Exception as e:
-            st.warning(f"Could not generate classification report. (Error: {e})")
+            st.warning(f"Could not generate classification report. (Error: {e})", icon="⚠️")
             st.code(classification_report(y_test, y_pred, zero_division=0))
             
     else: # Regression
-        # --- THIS IS THE FIX ---
         mse = mean_squared_error(y_test, y_pred) # Get MSE
         rmse = np.sqrt(mse) # Get RMSE by taking the square root
         r2 = r2_score(y_test, y_pred)
-        # --- END FIX ---
         
         st.metric(label="**R-squared (R2)**", value=f"{r2:.4f}")
         st.metric(label="**Root Mean Squared Error (RMSE)**", value=f"{rmse:.4f}")
 
-    st.write("### 5. Sample Predictions")
+    st.subheader("📋 5. Sample Predictions")
     
     if problem_type == "Classification":
         y_test_labels = y_test.map(lambda x: y_categories[x])
@@ -200,7 +198,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
 # -------------------------------------------------------------------
 
 # --- 1. File Uploader ---
-st.header("1. Upload Your Data")
+st.header("📤 1. Upload Your Data")
 uploaded_file = st.file_uploader(
     "Upload your data (CSV, TXT, Excel)", 
     type=["csv", "xlsx", "xls", "txt"]
@@ -211,7 +209,7 @@ df = None  # Initialize df as None
 if uploaded_file is not None:
     
     # --- 2. Load Options ---
-    st.subheader("Load Options")
+    st.subheader("⚙️ Load Options")
     
     is_excel = uploaded_file.name.endswith(('.xls', '.xlsx'))
     
@@ -240,14 +238,14 @@ if uploaded_file is not None:
         try:
             df = pd.read_excel(uploaded_file, header=header_arg)
         except Exception as e:
-            st.error(f"Error loading Excel file: {e}. Check your header row number.")
+            st.error(f"Error loading Excel file: {e}. Check your header row number.", icon="🚨")
     else:
         # It's a text file (CSV, TXT, etc.)
         st.info("""
             **Please specify how to load your text file:**
             * **Header:** Use the options above to specify your header row.
             * **Delimiter:** What character separates your columns?
-            """)
+            """, icon="ℹ️")
         
         separator = st.text_input(
             "Delimiter (Separator)", 
@@ -261,15 +259,15 @@ if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file, sep=separator, header=header_arg)
         except Exception as e:
-            st.error(f"Error loading text file: {e}. Check your delimiter and header option.")
+            st.error(f"Error loading text file: {e}. Check your delimiter and header option.", icon="🚨")
 
     # --- 3. Continue if 'df' is loaded ---
     if df is not None:
-        st.success(f"File '{uploaded_file.name}' loaded successfully. Found {df.shape[0]} rows and {df.shape[1]} columns.")
+        st.success(f"File '{uploaded_file.name}' loaded successfully. Found {df.shape[0]} rows and {df.shape[1]} columns.", icon="✅")
         st.dataframe(df.head())
         
         # --- 4. User Configuration ---
-        st.header("2. Configure Your Model")
+        st.header("🔬 2. Configure Your Model")
         
         all_columns = df.columns.tolist()
         
@@ -283,7 +281,7 @@ if uploaded_file is not None:
         problem_type = st.selectbox(
             "What type of problem is this?",
             options=["Classification", "Regression"],
-            help="**Classification:** Predicts a category (e.q., 'Churn'/'Stay', 'Red'/'Green').\n\n**Regression:** Predicts a number (e.g., price, temperature)."
+            help="**Classification:** Predicts a category (e.q., 'Churn'/'Stay', 'Red'/'Green').\n\n**Regression:** predicts a number (e.g., price, temperature)."
         )
 
         ignore_cols = st.multiselect(
@@ -293,9 +291,9 @@ if uploaded_file is not None:
         )
 
         # --- 5. Run Button ---
-        st.header("3. Build Your Model")
+        st.header("🚀 3. Build Your Model")
         if st.button("**Build Your Model**", type="primary"):
             if target_column is None:
-                st.error("Please select a target variable to predict.")
+                st.error("Please select a target variable to predict.", icon="🚨")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
