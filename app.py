@@ -33,14 +33,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
     
     # --- 1. Define Features (X) and Target (y) ---
     try:
-        # --- Data Cleaning (Automatic) ---
-        for col in df.columns:
-            if col not in ignore_cols and col != target_column:
-                try:
-                    df[col] = pd.to_numeric(df[col])
-                except (ValueError, TypeError):
-                    pass # Keep it as an object
-        
         y = df[target_column]
         X = df.drop(columns=[target_column] + ignore_cols)
         
@@ -74,21 +66,31 @@ def build_model(df, target_column, problem_type, ignore_cols):
             """)
             return
 
-    # --- 3. Automatic Feature Detection ---
+    # --- 3. Automatic Feature Detection & NEW CLEANING ---
     st.write("### 2. Detecting Feature Types")
-    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_features = X.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+    
+    numeric_features = []
+    categorical_features = []
+    
+    for col in X.columns:
+        try:
+            # Try to force the column to be numeric
+            # errors='raise' will immediately trigger the except block if it fails
+            pd.to_numeric(X[col])
+            numeric_features.append(col)
+        except (ValueError, TypeError):
+            # If it fails, it's not purely numeric. Treat it as categorical.
+            categorical_features.append(col)
+            # Force it to be a string to handle mixed types (e.g., [1, 2, 'UT'])
+            X[col] = X[col].astype(str)
 
     st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}")
     st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}")
 
-    # --- 4. NEW FIX: Force Data Types ---
-    # Force all categorical features to be strings
-    for col in categorical_features:
-        X[col] = X[col].astype(str)
-
-    # Force target 'y' to be encoded integers (0, 1, 2...) for classification
+    # --- 4. Force target 'y' to be encoded integers ---
     if problem_type == "Classification":
+        # Keep track of the original string categories for the final report
+        y_categories = y.astype('category').cat.categories
         y = y.astype('category').cat.codes
     # --- END FIX ---
 
@@ -98,7 +100,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
         ('scaler', StandardScaler())
     ])
     
-    # SimpleImputer will now use 'most_frequent' (a string) on all-string columns
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
@@ -154,12 +155,9 @@ def build_model(df, target_column, problem_type, ignore_cols):
         st.metric(label="**Accuracy**", value=f"{accuracy * 100:.2f}%")
         st.text("Classification Report:")
         try:
-            # We must map the integer labels (0, 1) back to their names for the report
-            target_names = y.astype('category').cat.categories.astype(str)
-            st.code(classification_report(y_test, y_pred, target_names=target_names, zero_division=0))
+            st.code(classification_report(y_test, y_pred, target_names=y_categories.astype(str), zero_division=0))
         except Exception as e:
             st.warning(f"Could not generate classification report. (Error: {e})")
-            # Fallback report without names
             st.code(classification_report(y_test, y_pred, zero_division=0))
             
     else: # Regression
@@ -172,14 +170,14 @@ def build_model(df, target_column, problem_type, ignore_cols):
     
     # Map predictions back to original labels for display
     if problem_type == "Classification":
-        original_labels = y.astype('category').cat.categories
-        y_test_labels = y_test.map(lambda x: original_labels[x])
-        y_pred_labels = [original_labels[p] for p in y_pred]
+        y_test_labels = y_test.map(lambda x: y_categories[x])
+        y_pred_labels = [y_categories[p] for p in y_pred]
         results_df = pd.DataFrame({'Actual': y_test_labels, 'Predicted': y_pred_labels})
     else:
         results_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
         
     st.dataframe(results_df.head(10))
+
 # -------------------------------------------------------------------
 # Main App Interface
 # -------------------------------------------------------------------
@@ -268,6 +266,7 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
 
 
 
