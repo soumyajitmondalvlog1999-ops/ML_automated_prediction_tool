@@ -23,9 +23,8 @@ st.title("🤖 Automated ML Model Builder")
 st.write("Upload your data, select what you want to predict, and this app will automatically build a model for you.")
 
 # -------------------------------------------------------------------
-# Functions
+# build_model Function (Contains all the ML logic)
 # -------------------------------------------------------------------
-
 def build_model(df, target_column, problem_type, ignore_cols):
     """Builds and evaluates a model based on user inputs."""
     
@@ -70,15 +69,12 @@ def build_model(df, target_column, problem_type, ignore_cols):
         y = y.astype('category').cat.codes
             
     else: # Problem type is "Regression"
-        # --- NEW SANITY CHECK FOR REGRESSION ---
         try:
             # Try to force y to be numeric for regression
             y = pd.to_numeric(y)
             
-            # Check for NaNs (missing values) in the target
             if y.isna().any():
                 st.warning(f"Your target column ('{target_column}') has missing values. Rows with missing targets will be dropped before training.")
-                # Drop rows in both X and y where y is NaN
                 X = X[~y.isna()]
                 y = y.dropna()
                 
@@ -93,7 +89,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
             * If you are trying to predict a category, please change the "Problem Type" to "Classification".
             """)
             return
-        # --- END NEW SANITY CHECK ---
 
     # --- 3. Automatic Feature Detection & Cleaning (for X) ---
     st.write("### 2. Detecting Feature Types")
@@ -210,10 +205,9 @@ df = None  # Initialize df as None
 
 if uploaded_file is not None:
     
-    # --- 2. Load Options (NEW) ---
+    # --- 2. Load Options ---
     st.subheader("Load Options")
     
-    # Check if it's an Excel file
     is_excel = uploaded_file.name.endswith(('.xls', '.xlsx'))
     
     if is_excel:
@@ -232,20 +226,21 @@ if uploaded_file is not None:
                 help="What character separates your columns? (e.g., `,` for comma, `\\t` for tab, `;` for semicolon)"
             )
         with col2:
-            header_row = st.number_input(
-                "Header Row", 
-                value=0, 
-                min_value=0, 
-                help="Which row number contains the column names? (0 is the first row)"
+            # --- THIS IS THE NEW, SIMPLER HEADER OPTION ---
+            has_header = st.checkbox(
+                "My file has a header in the first row", 
+                value=True,
+                help="Check this if the first row of your file contains column names. Uncheck it if the first row is data."
             )
+            header_arg = 0 if has_header else None
         
         if separator == "\\t": # Handle tab character
             separator = "\t"
 
         try:
-            df = pd.read_csv(uploaded_file, sep=separator, header=header_row)
+            df = pd.read_csv(uploaded_file, sep=separator, header=header_arg)
         except Exception as e:
-            st.error(f"Error loading text file: {e}. Check your delimiter and header row.")
+            st.error(f"Error loading text file: {e}. Check your delimiter and header option.")
 
     # --- 3. Continue if 'df' is loaded ---
     if df is not None:
@@ -283,8 +278,3 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
-
-
-
-
-
