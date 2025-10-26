@@ -34,7 +34,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
     # --- 1. Define Features (X) and Target (y) ---
     try:
         # --- Data Cleaning (Automatic) ---
-        # Try to convert all columns to numeric if possible
         for col in df.columns:
             if col not in ignore_cols and col != target_column:
                 # Use recommended way to avoid FutureWarning
@@ -43,9 +42,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
                 except (ValueError, TypeError):
                     pass # Keep it as an object
         
-        # Clean the target column if it's classification
         if problem_type == "Classification":
-            # Convert to string, strip whitespace, remove periods
             df[target_column] = df[target_column].astype(str).str.strip().str.replace('.', '', regex=False)
         
         y = df[target_column]
@@ -59,10 +56,9 @@ def build_model(df, target_column, problem_type, ignore_cols):
         st.error(f"Error preparing data: {e}")
         return
 
-    # --- 2. NEW: Sanity Check for Classification ---
+    # --- 2. Sanity Check for Classification ---
     if problem_type == "Classification":
         unique_classes = y.nunique()
-        # We'll set a reasonable limit, e.g., 50 unique classes
         if unique_classes > 50:
             st.error(f"""
             **Configuration Error!**
@@ -70,12 +66,20 @@ def build_model(df, target_column, problem_type, ignore_cols):
             You selected **Classification**, but your target column ('{target_column}')
             has **{unique_classes}** unique values.
             
-            * Classification is for predicting a few categories (e.g., 'True'/'False', 'Type A'/'Type B').
-            * Your data looks like a **Regression** problem (predicting a number) or an ID column.
+            * Classification is for predicting a few categories (e.g., 'True'/'False').
+            * Your data looks like a **Regression** problem (predicting a number).
             
             **Please select a different target column or change the "Problem Type" to "Regression".**
             """)
-            return  # Stop the function here
+            return
+        if unique_classes < 2:
+            st.error(f"""
+            **Configuration Error!**
+            
+            Your target column ('{target_column}') only has **{unique_classes}** unique value.
+            The model needs at least two different classes to learn from (e.g., 'True' and 'False').
+            """)
+            return
 
     # --- 3. Automatic Feature Detection ---
     st.write("### 2. Detecting Feature Types")
@@ -90,7 +94,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler', StandardScaler())
     ])
-
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
@@ -106,7 +109,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
     # --- 6. Select Model Based on Problem Type ---
     if problem_type == "Classification":
         model = RandomForestClassifier(random_state=42)
-    else:  # Regression
+    else:
         model = RandomForestRegressor(random_state=42)
 
     # --- 7. Create the full ML Pipeline ---
@@ -118,9 +121,29 @@ def build_model(df, target_column, problem_type, ignore_cols):
     # --- 8. Split data and train model ---
     st.write("### 3. Training Model")
     with st.spinner("Splitting data and training model... This may take a moment."):
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=(y if problem_type == 'Classification' else None))
+        
+        # --- NEW ROBUST SPLIT ---
+        try:
+            # Try to stratify for classification
+            stratify_option = (y if problem_type == 'Classification' else None)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=stratify_option
+            )
+        except ValueError as e:
+            # If stratification fails (e.g., only 1 sample in a class)
+            st.warning(f"""
+            **Stratification Warning:** Could not stratify data (Error: {e}). 
+            This usually happens if one class has very few samples.
+            Proceeding without stratification.
+            """)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
+        # --- END NEW SPLIT ---
+            
         model_pipeline.fit(X_train, y_train)
         y_pred = model_pipeline.predict(X_test)
+        
     st.success("Model training complete! ✅")
 
     # --- 9. Evaluate Model and Show Results ---
@@ -133,8 +156,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
             st.code(classification_report(y_test, y_pred, zero_division=0))
         except Exception as e:
             st.warning(f"Could not generate classification report. Error: {e}")
-            st.write("This can happen if the model only predicts one class.")
-    
+            
     else: # Regression
         rmse = mean_squared_error(y_test, y_pred, squared=False)
         r2 = r2_score(y_test, y_pred)
@@ -233,4 +255,5 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
 
