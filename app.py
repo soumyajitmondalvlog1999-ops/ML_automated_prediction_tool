@@ -29,14 +29,19 @@ st.write("Upload your data, select what you want to predict, and this app will a
 def build_model(df, target_column, problem_type, ignore_cols):
     """Builds and evaluates a model based on user inputs."""
     
-    # 1. Define Features (X) and Target (y)
     st.write("### 1. Preparing Data")
+    
+    # --- 1. Define Features (X) and Target (y) ---
     try:
         # --- Data Cleaning (Automatic) ---
         # Try to convert all columns to numeric if possible
         for col in df.columns:
             if col not in ignore_cols and col != target_column:
-                df[col] = pd.to_numeric(df[col], errors='ignore')
+                # Use recommended way to avoid FutureWarning
+                try:
+                    df[col] = pd.to_numeric(df[col])
+                except (ValueError, TypeError):
+                    pass # Keep it as an object
         
         # Clean the target column if it's classification
         if problem_type == "Classification":
@@ -49,11 +54,30 @@ def build_model(df, target_column, problem_type, ignore_cols):
         st.write(f"**Target variable (y):** `{target_column}`")
         st.write(f"**Ignored columns:** `{ignore_cols}`")
         st.write(f"**Feature columns (X):** {X.columns.tolist()}")
+        
     except Exception as e:
         st.error(f"Error preparing data: {e}")
         return
 
-    # 2. Automatic Feature Detection
+    # --- 2. NEW: Sanity Check for Classification ---
+    if problem_type == "Classification":
+        unique_classes = y.nunique()
+        # We'll set a reasonable limit, e.g., 50 unique classes
+        if unique_classes > 50:
+            st.error(f"""
+            **Configuration Error!**
+            
+            You selected **Classification**, but your target column ('{target_column}')
+            has **{unique_classes}** unique values.
+            
+            * Classification is for predicting a few categories (e.g., 'True'/'False', 'Type A'/'Type B').
+            * Your data looks like a **Regression** problem (predicting a number) or an ID column.
+            
+            **Please select a different target column or change the "Problem Type" to "Regression".**
+            """)
+            return  # Stop the function here
+
+    # --- 3. Automatic Feature Detection ---
     st.write("### 2. Detecting Feature Types")
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categorical_features = X.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
@@ -61,7 +85,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
     st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}")
     st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}")
 
-    # 3. Create Preprocessing Pipelines
+    # --- 4. Create Preprocessing Pipelines ---
     numeric_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler', StandardScaler())
@@ -72,42 +96,41 @@ def build_model(df, target_column, problem_type, ignore_cols):
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
     ])
 
-    # 4. Combine transformers
+    # --- 5. Combine transformers ---
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
-        ], remainder='passthrough') # Use 'passthrough' for safety
+        ], remainder='passthrough')
 
-    # 5. Select Model Based on Problem Type
+    # --- 6. Select Model Based on Problem Type ---
     if problem_type == "Classification":
         model = RandomForestClassifier(random_state=42)
     else:  # Regression
         model = RandomForestRegressor(random_state=42)
 
-    # 6. Create the full ML Pipeline
+    # --- 7. Create the full ML Pipeline ---
     model_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('model', model)
     ])
 
-    # 7. Split data and train model
+    # --- 8. Split data and train model ---
     st.write("### 3. Training Model")
     with st.spinner("Splitting data and training model... This may take a moment."):
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=(y if problem_type == 'Classification' else None))
         model_pipeline.fit(X_train, y_train)
         y_pred = model_pipeline.predict(X_test)
     st.success("Model training complete! ✅")
 
-    # 8. Evaluate Model and Show Results
+    # --- 9. Evaluate Model and Show Results ---
     st.write("### 4. Model Evaluation")
     if problem_type == "Classification":
         accuracy = accuracy_score(y_test, y_pred)
         st.metric(label="**Accuracy**", value=f"{accuracy * 100:.2f}%")
         st.text("Classification Report:")
-        # Use try-except block for classification report
         try:
-            st.code(classification_report(y_test, y_pred))
+            st.code(classification_report(y_test, y_pred, zero_division=0))
         except Exception as e:
             st.warning(f"Could not generate classification report. Error: {e}")
             st.write("This can happen if the model only predicts one class.")
@@ -210,3 +233,4 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
