@@ -210,38 +210,40 @@ if uploaded_file is not None:
     
     is_excel = uploaded_file.name.endswith(('.xls', '.xlsx'))
     
+    # --- THIS SECTION IS NOW VISIBLE FOR ALL FILE TYPES ---
+    has_header = st.checkbox(
+        "My file has a header in the first row", 
+        value=True,
+        help="Check this if the first row of your file contains column names. Uncheck it if the first row is data."
+    )
+    header_arg = 0 if has_header else None
+    # --- END MOVED SECTION ---
+
     if is_excel:
         try:
-            df = pd.read_excel(uploaded_file)
+            # We now pass the 'header_arg' to pd.read_excel
+            df = pd.read_excel(uploaded_file, header=header_arg)
         except Exception as e:
             st.error(f"Error loading Excel file: {e}")
     else:
         # It's a text file (CSV, TXT, etc.)
         st.info("""
-    **Please specify how to load your text file:**
-    * **Delimiter:** What character separates your columns? (e.g., `,` for CSV, `\\t` for tab).
-    * **Header:** Check the box if the *first row* of your file contains column names. Uncheck it if your file *only* contains data (and no header).
-    """)
-        col1, col2 = st.columns(2)
-        with col1:
-            separator = st.text_input(
-                "Delimiter (Separator)", 
-                value=",", 
-                help="What character separates your columns? (e.g., `,` for comma, `\\t` for tab, `;` for semicolon)"
-            )
-        with col2:
-            # --- THIS IS THE NEW, SIMPLER HEADER OPTION ---
-            has_header = st.checkbox(
-                "My file has a header in the first row", 
-                value=True,
-                help="Check this if the first row of your file contains column names. Uncheck it if the first row is data."
-            )
-            header_arg = 0 if has_header else None
+            **Please specify how to load your text file:**
+            * **Delimiter:** What character separates your columns? (e.g., `,` for CSV, `\\t` for tab).
+            * **Header:** Use the checkbox above to indicate if your file has a header.
+            """)
+        
+        separator = st.text_input(
+            "Delimiter (Separator)", 
+            value=",", 
+            help="What character separates your columns? (e.g., `,` for comma, `\\t` for tab, `;` for semicolon)"
+        )
         
         if separator == "\\t": # Handle tab character
             separator = "\t"
 
         try:
+            # We already defined 'header_arg' above
             df = pd.read_csv(uploaded_file, sep=separator, header=header_arg)
         except Exception as e:
             st.error(f"Error loading text file: {e}. Check your delimiter and header option.")
@@ -282,4 +284,3 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
-
