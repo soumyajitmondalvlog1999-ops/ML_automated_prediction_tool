@@ -217,7 +217,11 @@ if uploaded_file is not None:
             st.error(f"Error loading Excel file: {e}")
     else:
         # It's a text file (CSV, TXT, etc.)
-        st.info("Your file is a text file. Please specify the load options:")
+        st.info("""
+    **Please specify how to load your text file:**
+    * **Delimiter:** What character separates your columns? (e.g., `,` for CSV, `\\t` for tab).
+    * **Header:** Check the box if the *first row* of your file contains column names. Uncheck it if your file *only* contains data (and no header).
+    """)
         col1, col2 = st.columns(2)
         with col1:
             separator = st.text_input(
@@ -278,3 +282,4 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
