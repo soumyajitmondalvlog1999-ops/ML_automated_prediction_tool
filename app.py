@@ -36,21 +36,13 @@ def build_model(df, target_column, problem_type, ignore_cols):
         # --- Data Cleaning (Automatic) ---
         for col in df.columns:
             if col not in ignore_cols and col != target_column:
-                # Use recommended way to avoid FutureWarning
                 try:
                     df[col] = pd.to_numeric(df[col])
                 except (ValueError, TypeError):
                     pass # Keep it as an object
         
-        if problem_type == "Classification":
-            df[target_column] = df[target_column].astype(str).str.strip().str.replace('.', '', regex=False)
-        
         y = df[target_column]
         X = df.drop(columns=[target_column] + ignore_cols)
-        
-        st.write(f"**Target variable (y):** `{target_column}`")
-        st.write(f"**Ignored columns:** `{ignore_cols}`")
-        st.write(f"**Feature columns (X):** {X.columns.tolist()}")
         
     except Exception as e:
         st.error(f"Error preparing data: {e}")
@@ -58,6 +50,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
 
     # --- 2. Sanity Check for Classification ---
     if problem_type == "Classification":
+        y = y.astype(str).str.strip().str.replace('.', '', regex=False)
         unique_classes = y.nunique()
         if unique_classes > 50:
             st.error(f"""
@@ -89,48 +82,57 @@ def build_model(df, target_column, problem_type, ignore_cols):
     st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}")
     st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}")
 
-    # --- 4. Create Preprocessing Pipelines ---
+    # --- 4. NEW FIX: Force Data Types ---
+    # Force all categorical features to be strings
+    for col in categorical_features:
+        X[col] = X[col].astype(str)
+
+    # Force target 'y' to be encoded integers (0, 1, 2...) for classification
+    if problem_type == "Classification":
+        y = y.astype('category').cat.codes
+    # --- END FIX ---
+
+    # --- 5. Create Preprocessing Pipelines ---
     numeric_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler', StandardScaler())
     ])
+    
+    # SimpleImputer will now use 'most_frequent' (a string) on all-string columns
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
     ])
 
-    # --- 5. Combine transformers ---
+    # --- 6. Combine transformers ---
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
         ], remainder='passthrough')
 
-    # --- 6. Select Model Based on Problem Type ---
+    # --- 7. Select Model Based on Problem Type ---
     if problem_type == "Classification":
         model = RandomForestClassifier(random_state=42)
     else:
         model = RandomForestRegressor(random_state=42)
 
-    # --- 7. Create the full ML Pipeline ---
+    # --- 8. Create the full ML Pipeline ---
     model_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('model', model)
     ])
 
-    # --- 8. Split data and train model ---
+    # --- 9. Split data and train model ---
     st.write("### 3. Training Model")
     with st.spinner("Splitting data and training model... This may take a moment."):
         
-        # --- NEW ROBUST SPLIT ---
         try:
-            # Try to stratify for classification
             stratify_option = (y if problem_type == 'Classification' else None)
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42, stratify=stratify_option
             )
         except ValueError as e:
-            # If stratification fails (e.g., only 1 sample in a class)
             st.warning(f"""
             **Stratification Warning:** Could not stratify data (Error: {e}). 
             This usually happens if one class has very few samples.
@@ -139,23 +141,26 @@ def build_model(df, target_column, problem_type, ignore_cols):
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
             )
-        # --- END NEW SPLIT ---
             
         model_pipeline.fit(X_train, y_train)
         y_pred = model_pipeline.predict(X_test)
         
     st.success("Model training complete! ✅")
 
-    # --- 9. Evaluate Model and Show Results ---
+    # --- 10. Evaluate Model and Show Results ---
     st.write("### 4. Model Evaluation")
     if problem_type == "Classification":
         accuracy = accuracy_score(y_test, y_pred)
         st.metric(label="**Accuracy**", value=f"{accuracy * 100:.2f}%")
         st.text("Classification Report:")
         try:
-            st.code(classification_report(y_test, y_pred, zero_division=0))
+            # We must map the integer labels (0, 1) back to their names for the report
+            target_names = y.astype('category').cat.categories.astype(str)
+            st.code(classification_report(y_test, y_pred, target_names=target_names, zero_division=0))
         except Exception as e:
-            st.warning(f"Could not generate classification report. Error: {e}")
+            st.warning(f"Could not generate classification report. (Error: {e})")
+            # Fallback report without names
+            st.code(classification_report(y_test, y_pred, zero_division=0))
             
     else: # Regression
         rmse = mean_squared_error(y_test, y_pred, squared=False)
@@ -164,9 +169,17 @@ def build_model(df, target_column, problem_type, ignore_cols):
         st.metric(label="**Root Mean Squared Error (RMSE)**", value=f"{rmse:.4f}")
 
     st.write("### 5. Sample Predictions")
-    results_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
+    
+    # Map predictions back to original labels for display
+    if problem_type == "Classification":
+        original_labels = y.astype('category').cat.categories
+        y_test_labels = y_test.map(lambda x: original_labels[x])
+        y_pred_labels = [original_labels[p] for p in y_pred]
+        results_df = pd.DataFrame({'Actual': y_test_labels, 'Predicted': y_pred_labels})
+    else:
+        results_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
+        
     st.dataframe(results_df.head(10))
-
 # -------------------------------------------------------------------
 # Main App Interface
 # -------------------------------------------------------------------
@@ -255,5 +268,6 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
 
 
