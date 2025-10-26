@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np  # <-- IMPORT NUMPY
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -174,8 +175,12 @@ def build_model(df, target_column, problem_type, ignore_cols):
             st.code(classification_report(y_test, y_pred, zero_division=0))
             
     else: # Regression
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        # --- THIS IS THE FIX ---
+        mse = mean_squared_error(y_test, y_pred) # Get MSE
+        rmse = np.sqrt(mse) # Get RMSE by taking the square root
         r2 = r2_score(y_test, y_pred)
+        # --- END FIX ---
+        
         st.metric(label="**R-squared (R2)**", value=f"{r2:.4f}")
         st.metric(label="**Root Mean Squared Error (RMSE)**", value=f"{rmse:.4f}")
 
@@ -210,7 +215,7 @@ if uploaded_file is not None:
     
     is_excel = uploaded_file.name.endswith(('.xls', '.xlsx'))
     
-    # --- UPDATED HEADER OPTIONS (VISIBLE FOR ALL FILES) ---
+    # --- HEADER OPTIONS (VISIBLE FOR ALL FILES) ---
     no_header = st.checkbox(
         "My file does NOT have a header row", 
         value=False,
@@ -228,13 +233,11 @@ if uploaded_file is not None:
             step=1,
             help="Which row contains the column names? (Remember: 0 is the first row)"
         )
-        # --- THIS IS THE NEW, VISIBLE INSTRUCTION YOU ASKED FOR ---
         st.caption("E.g., enter **0** if the header is on the **first row**, or **2** if it's on the **third row**.")
-    # --- END NEW HEADER OPTIONS ---
+    # --- END HEADER OPTIONS ---
 
     if is_excel:
         try:
-            # We now pass the 'header_arg' to pd.read_excel
             df = pd.read_excel(uploaded_file, header=header_arg)
         except Exception as e:
             st.error(f"Error loading Excel file: {e}. Check your header row number.")
@@ -256,7 +259,6 @@ if uploaded_file is not None:
             separator = "\t"
 
         try:
-            # We already defined 'header_arg' above
             df = pd.read_csv(uploaded_file, sep=separator, header=header_arg)
         except Exception as e:
             st.error(f"Error loading text file: {e}. Check your delimiter and header option.")
