@@ -35,12 +35,11 @@ def build_model(df, target_column, problem_type, ignore_cols):
     try:
         y = df[target_column]
         X = df.drop(columns=[target_column] + ignore_cols)
-        
     except Exception as e:
         st.error(f"Error preparing data: {e}")
         return
 
-    # --- 2. Sanity Check for Classification ---
+    # --- 2. Sanity Checks & Target Variable Processing ---
     if problem_type == "Classification":
         y = y.astype(str).str.strip().str.replace('.', '', regex=False)
         unique_classes = y.nunique()
@@ -65,8 +64,38 @@ def build_model(df, target_column, problem_type, ignore_cols):
             The model needs at least two different classes to learn from (e.g., 'True' and 'False').
             """)
             return
+            
+        # If all checks pass, encode y for classification
+        y_categories = y.astype('category').cat.categories
+        y = y.astype('category').cat.codes
+            
+    else: # Problem type is "Regression"
+        # --- NEW SANITY CHECK FOR REGRESSION ---
+        try:
+            # Try to force y to be numeric for regression
+            y = pd.to_numeric(y)
+            
+            # Check for NaNs (missing values) in the target
+            if y.isna().any():
+                st.warning(f"Your target column ('{target_column}') has missing values. Rows with missing targets will be dropped before training.")
+                # Drop rows in both X and y where y is NaN
+                X = X[~y.isna()]
+                y = y.dropna()
+                
+        except (ValueError, TypeError):
+            st.error(f"""
+            **Configuration Error!**
+            
+            You selected **Regression**, but your target column ('{target_column}')
+            contains non-numeric text values (like '{y.iloc[0]}').
+            
+            * Regression can only predict numbers.
+            * If you are trying to predict a category, please change the "Problem Type" to "Classification".
+            """)
+            return
+        # --- END NEW SANITY CHECK ---
 
-    # --- 3. Automatic Feature Detection & NEW CLEANING ---
+    # --- 3. Automatic Feature Detection & Cleaning (for X) ---
     st.write("### 2. Detecting Feature Types")
     
     numeric_features = []
@@ -74,25 +103,14 @@ def build_model(df, target_column, problem_type, ignore_cols):
     
     for col in X.columns:
         try:
-            # Try to force the column to be numeric
-            # errors='raise' will immediately trigger the except block if it fails
             pd.to_numeric(X[col])
             numeric_features.append(col)
         except (ValueError, TypeError):
-            # If it fails, it's not purely numeric. Treat it as categorical.
             categorical_features.append(col)
-            # Force it to be a string to handle mixed types (e.g., [1, 2, 'UT'])
-            X[col] = X[col].astype(str)
+            X[col] = X[col].astype(str) # Force to string to handle mixed types
 
     st.info(f"**Found {len(numeric_features)} numerical features:**\n{numeric_features}")
     st.info(f"**Found {len(categorical_features)} categorical features:**\n{categorical_features}")
-
-    # --- 4. Force target 'y' to be encoded integers ---
-    if problem_type == "Classification":
-        # Keep track of the original string categories for the final report
-        y_categories = y.astype('category').cat.categories
-        y = y.astype('category').cat.codes
-    # --- END FIX ---
 
     # --- 5. Create Preprocessing Pipelines ---
     numeric_transformer = Pipeline(steps=[
@@ -115,7 +133,7 @@ def build_model(df, target_column, problem_type, ignore_cols):
     # --- 7. Select Model Based on Problem Type ---
     if problem_type == "Classification":
         model = RandomForestClassifier(random_state=42)
-    else:
+    else: 
         model = RandomForestRegressor(random_state=42)
 
     # --- 8. Create the full ML Pipeline ---
@@ -168,7 +186,6 @@ def build_model(df, target_column, problem_type, ignore_cols):
 
     st.write("### 5. Sample Predictions")
     
-    # Map predictions back to original labels for display
     if problem_type == "Classification":
         y_test_labels = y_test.map(lambda x: y_categories[x])
         y_pred_labels = [y_categories[p] for p in y_pred]
@@ -266,6 +283,7 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
 
 
 
