@@ -10,17 +10,68 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score
 import joblib
 import openpyxl  # Required for pd.read_excel
+import base64 # For potentially embedding images, though st.image is usually sufficient
 
 # -------------------------------------------------------------------
 # Page Setup
 # -------------------------------------------------------------------
 st.set_page_config(
     page_title="Automated ML Model Builder",
-    page_icon="🤖",
+    page_icon="🧠", # Changed to a brain emoji for a more prominent AI logo
     layout="wide"
 )
 
-st.title("🤖 Automated ML Model Builder")
+# --- Custom CSS for the top-right image and author text ---
+st.markdown("""
+<style>
+/* Adjust the main Streamlit header */
+h1 {
+    display: flex;
+    align-items: center;
+}
+h1 .emoji {
+    font-size: 1.5em; /* Make the emoji beside the title bigger */
+    margin-right: 10px;
+}
+
+/* Position for the top-right image */
+.top-right-image {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 10000; /* Ensure it stays on top */
+}
+
+/* Optional: Make author text less obtrusive */
+.footer-text {
+    font-size: 0.8em;
+    color: #666;
+    text-align: right; /* Align to the right, or choose 'center'/'left' */
+    margin-top: 20px; /* Space from the content above */
+}
+
+/* Streamlit specific: Hide default header/footer if desired */
+/*
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+*/
+</style>
+""", unsafe_allow_html=True)
+
+
+# --- TOP RIGHT AI ICON ---
+# Ensure 'ai_icon.png' is in the same directory as app.py
+try:
+    st.markdown(
+        f'<div class="top-right-image"><img src="data:image/png;base64,{base64.b64encode(open("ai_icon.png", "rb").read()).decode()}" width="60"></div>',
+        unsafe_allow_html=True
+    )
+except FileNotFoundError:
+    st.warning("`ai_icon.png` not found. Please ensure it's in the same directory as `app.py`.")
+
+
+st.title("🧠 Automated ML Model Builder") # Main title with a larger brain emoji
 st.write("Upload your data, select what you want to predict, and this app will automatically build a model for you.")
 
 # -------------------------------------------------------------------
@@ -297,3 +348,6 @@ if uploaded_file is not None:
                 st.error("Please select a target variable to predict.", icon="🚨")
             else:
                 build_model(df, target_column, problem_type, ignore_cols)
+
+# --- AUTHORSHIP AT THE VERY END ---
+st.markdown('<p class="footer-text">Created by SOUMYAJIT MONDAL</p>', unsafe_allow_html=True)
